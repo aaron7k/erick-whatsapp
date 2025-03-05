@@ -8,9 +8,11 @@ import { createInstance, listInstances, getUsers, editInstance, getInstanceConfi
 import type { WhatsAppInstance, SingleInstanceResponse, User, InstanceConfig } from './types';
 import InstanceDetailPage from './pages/InstanceDetailPage';
 
-const LOCATION_ID = import.meta.env.VITE_LOCATION_ID;
-
 export const App: React.FC = () => {
+  // Get locationId from URL parameters
+  const params = new URLSearchParams(window.location.search);
+  const locationId = params.get('locationId');
+
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,13 +22,24 @@ export const App: React.FC = () => {
   const [selectedInstance, setSelectedInstance] = useState<WhatsAppInstance | null>(null);
   const [configInstance, setConfigInstance] = useState<SingleInstanceResponse['data'] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Add this line to calculate hasMainDevice
   const hasMainDevice = instances.some(instance => instance.main_device);
 
+  useEffect(() => {
+    if (!locationId) {
+      setError('No se proporcionó un ID de ubicación válido');
+      setLoading(false);
+      return;
+    }
+    setError(null);
+  }, [locationId]);
+
   const loadInstances = useCallback(async () => {
+    if (!locationId) return;
+    
     try {
-      const instancesList = await listInstances(LOCATION_ID);
+      const instancesList = await listInstances(locationId);
       setInstances(instancesList);
     } catch (error) {
       toast.error('Error al cargar las instancias');
@@ -34,12 +47,14 @@ export const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [locationId]);
 
   const loadUsers = useCallback(async () => {
+    if (!locationId) return;
+
     setLoadingUsers(true);
     try {
-      const usersList = await getUsers(LOCATION_ID);
+      const usersList = await getUsers(locationId);
       setUsers(usersList);
     } catch (error) {
       console.error('Error loading users:', error);
@@ -48,7 +63,7 @@ export const App: React.FC = () => {
     } finally {
       setLoadingUsers(false);
     }
-  }, []);
+  }, [locationId]);
 
   useEffect(() => {
     loadInstances();
@@ -75,10 +90,12 @@ export const App: React.FC = () => {
   }, [instances.length, loadUsers]);
 
   const handleEditConfig = useCallback(async (instance: WhatsAppInstance) => {
+    if (!locationId) return;
+
     setLoadingUsers(true);
     try {
       await loadUsers();
-      const instanceConfig = await getInstanceConfig(LOCATION_ID, instance.instance_id.toString());
+      const instanceConfig = await getInstanceConfig(locationId, instance.instance_id.toString());
       setIsEditing(true);
       setConfigInstance(instanceConfig);
       setIsModalOpen(true);
@@ -87,13 +104,15 @@ export const App: React.FC = () => {
     } finally {
       setLoadingUsers(false);
     }
-  }, [loadUsers]);
+  }, [locationId, loadUsers]);
 
   const handleSaveConfig = useCallback(async (config: InstanceConfig, userData?: User) => {
+    if (!locationId) return;
+
     setIsSaving(true);
     try {
       if (isEditing && configInstance) {
-        await editInstance(LOCATION_ID, configInstance.instance_name, config);
+        await editInstance(locationId, configInstance.instance_name, config);
         toast.success('Configuración actualizada correctamente');
       } else {
         const userDetails = userData ? {
@@ -102,7 +121,7 @@ export const App: React.FC = () => {
           user_phone: userData.phone || ''
         } : undefined;
 
-        await createInstance(LOCATION_ID, config, userDetails);
+        await createInstance(locationId, config, userDetails);
         toast.success('WhatsApp creado correctamente');
       }
       await loadInstances();
@@ -112,7 +131,7 @@ export const App: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [isEditing, configInstance, loadInstances]);
+  }, [locationId, isEditing, configInstance, loadInstances]);
 
   const handleViewInstance = (instance: WhatsAppInstance) => {
     setSelectedInstance(instance);
@@ -139,6 +158,14 @@ export const App: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-red-600">{error}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <Toaster position="top-right" />
@@ -148,7 +175,7 @@ export const App: React.FC = () => {
         {selectedInstance ? (
           <InstanceDetailPage
             instance={selectedInstance}
-            locationId={LOCATION_ID}
+            locationId={locationId!}
             onGoBack={handleGoBack}
             onQRCodeUpdated={() => {}}
           />
@@ -172,7 +199,7 @@ export const App: React.FC = () => {
                   key={instance.instance_id}
                   instance={instance}
                   onViewInstance={handleViewInstance}
-                  locationId={LOCATION_ID}
+                  locationId={locationId!}
                   onInstanceDeleted={handleInstanceDeleted}
                   onInstanceUpdated={handleInstanceUpdated}
                   onEditConfig={handleEditConfig}
