@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Smartphone, MessageSquare, Trash2, Power } from 'lucide-react';
+import { Smartphone, MessageSquare, Trash2, Power, Settings } from 'lucide-react';
 import type { WhatsAppInstance } from '../types';
 import { deleteInstance, turnOffInstance } from '../api';
 import { toast } from 'react-hot-toast';
@@ -11,6 +11,7 @@ interface InstanceCardProps {
   locationId: string;
   onInstanceDeleted?: () => void;
   onInstanceUpdated?: () => void;
+  onEditConfig: (instance: WhatsAppInstance) => void;
 }
 
 export const InstanceCard: React.FC<InstanceCardProps> = ({ 
@@ -18,7 +19,8 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
   onViewInstance,
   locationId,
   onInstanceDeleted,
-  onInstanceUpdated
+  onInstanceUpdated,
+  onEditConfig
 }) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTurningOff, setIsTurningOff] = useState(false);
@@ -86,11 +88,18 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow-xl p-6 space-y-4 hover:shadow-2xl transition-shadow duration-200">
+      <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Smartphone className="w-6 h-6 text-gray-600" />
-            <h3 className="text-lg font-semibold">{instance.instance_name}</h3>
+            <div>
+              <h3 className="text-lg font-semibold">{instance.instance_alias}</h3>
+              {instance.main_device && (
+                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                  Dispositivo Principal
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center space-x-2">
             <span className={`inline-block w-3 h-3 rounded-full ${getStatusColor(instance.connectionStatus)}`}></span>
@@ -100,12 +109,30 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
           </div>
         </div>
 
-        <div>
+        <div className="space-y-1">
           <p className="text-sm text-gray-500">ID: {instance.instance_id}</p>
           <p className="text-sm text-gray-500">Nombre: {instance.instance_name}</p>
+          {!instance.main_device && instance.userId && (
+            <p className="text-sm text-gray-500">Usuario asignado: {instance.userId}</p>
+          )}
+          <div className="flex space-x-2">
+            {instance.fb_ads && (
+              <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                Facebook ADS
+              </span>
+            )}
+          </div>
         </div>
         
         <div className="flex justify-end items-center space-x-2">
+          <button
+            onClick={() => onEditConfig(instance)}
+            className="p-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
+            title="Editar configuración"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
           {!isConnected && (
             <button
               onClick={() => onViewInstance(instance)}
@@ -115,6 +142,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
               <span>Ver QR</span>
             </button>
           )}
+
           {isConnected && (
             <button
               onClick={handleTurnOff}
@@ -125,6 +153,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
               <span>{isTurningOff ? 'Desconectando...' : 'Desconectar'}</span>
             </button>
           )}
+
           <button
             onClick={() => setShowDeleteModal(true)}
             disabled={isDeleting}
@@ -138,7 +167,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
 
       <DeleteConfirmationModal
         isOpen={showDeleteModal}
-        instanceName={instance.instance_name}
+        instanceName={instance.instance_alias}
         onConfirm={handleDelete}
         onCancel={() => setShowDeleteModal(false)}
         isDeleting={isDeleting}
@@ -146,3 +175,5 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
     </>
   );
 };
+
+export default InstanceCard;

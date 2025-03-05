@@ -2,109 +2,117 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { Toaster, toast } from 'react-hot-toast';
 import { InstanceCard } from './components/InstanceCard';
-import { UserModal } from './components/UserModal';
+import { WhatsAppConfigModal } from './components/WhatsAppConfigModal';
 import { LoadingOverlay } from './components/LoadingOverlay';
-import { createInstance, listInstances, getUsers } from './api';
-import type { WhatsAppInstance, User } from './types';
+import { createInstance, listInstances, getUsers, editInstance, getInstanceConfig } from './api';
+import type { WhatsAppInstance, SingleInstanceResponse, User, InstanceConfig } from './types';
 import InstanceDetailPage from './pages/InstanceDetailPage';
 
-const getLocationIdFromUrl = (): string | null => {
-  const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.get('locationId');
-};
+const LOCATION_ID = import.meta.env.VITE_LOCATION_ID;
 
-const App = () => {
+export const App: React.FC = () => {
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [totalInstances, setTotalInstances] = useState(0);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<WhatsAppInstance | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [locationId, setLocationId] = useState<string | null>(null);
+  const [configInstance, setConfigInstance] = useState<SingleInstanceResponse['data'] | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    const id = getLocationIdFromUrl();
-    if (!id) {
-      setError('LocationId no proporcionado en la URL');
-      setLoading(false);
-    } else {
-      setLocationId(id);
-    }
-  }, []);
+  // Add this line to calculate hasMainDevice
+  const hasMainDevice = instances.some(instance => instance.main_device);
 
   const loadInstances = useCallback(async () => {
-    if (!locationId) return;
-
     try {
-      const response = await listInstances(locationId);
-      if (response && Array.isArray(response.instances)) {
-        setInstances(response.instances);
-        setTotalInstances(response.instances.length);
-      } else {
-        setInstances([]);
-        setTotalInstances(0);
-      }
+      const instancesList = await listInstances(LOCATION_ID);
+      setInstances(instancesList);
     } catch (error) {
       toast.error('Error al cargar las instancias');
       setInstances([]);
-      setTotalInstances(0);
     } finally {
       setLoading(false);
     }
-  }, [locationId]);
+  }, []);
 
   const loadUsers = useCallback(async () => {
-    if (!locationId) return;
-
     setLoadingUsers(true);
     try {
-      const usersList = await getUsers(locationId);
+      const usersList = await getUsers(LOCATION_ID);
       setUsers(usersList);
     } catch (error) {
+      console.error('Error loading users:', error);
       toast.error('Error al cargar los usuarios');
       setUsers([]);
     } finally {
       setLoadingUsers(false);
     }
-  }, [locationId]);
+  }, []);
 
   useEffect(() => {
-    if (locationId) {
-      loadInstances();
-    }
-  }, [loadInstances, locationId]);
+    loadInstances();
+  }, [loadInstances]);
 
   const handleOpenModal = useCallback(async () => {
     if (instances.length >= 5) {
       toast.error('Número máximo de instancias (5) alcanzado');
       return;
     }
-    await loadUsers();
-    setIsModalOpen(true);
+    
+    setLoadingUsers(true);
+    try {
+      await loadUsers();
+      setIsEditing(false);
+      setConfigInstance(null);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Error loading users:', error);
+      toast.error('Error al cargar los usuarios');
+    } finally {
+      setLoadingUsers(false);
+    }
   }, [instances.length, loadUsers]);
 
-  const handleCreateInstance = useCallback(async (userId: string, name: string, phone: string, email: string, instanceNumber: number) => {
-    if (!locationId) return;
-
-    setIsCreating(true);
+  const handleEditConfig = useCallback(async (instance: WhatsAppInstance) => {
+    setLoadingUsers(true);
     try {
-      await createInstance(locationId, userId, name, phone, email, instanceNumber);
-      toast.success('Nueva instancia de WhatsApp creada');
-      await loadInstances();
+      await loadUsers();
+      const instanceConfig = await getInstanceConfig(LOCATION_ID, instance.instance_id.toString());
+      setIsEditing(true);
+      setConfigInstance(instanceConfig);
+      setIsModalOpen(true);
     } catch (error) {
-      toast.error('Error al crear la instancia de WhatsApp');
+      toast.error('Error al obtener la configuración de la instancia');
     } finally {
-      setIsCreating(false);
-      setIsModalOpen(false);
+      setLoadingUsers(false);
     }
-  }, [locationId, loadInstances]);
+  }, [loadUsers]);
 
-  const handleSelectUser = useCallback((userId: string, name: string, phone: string, email: string, instanceNumber: number) => {
-    handleCreateInstance(userId, name, phone, email, instanceNumber);
-  }, [handleCreateInstance]);
+  const handleSaveConfig = useCallback(async (config: InstanceConfig, userData?: User) => {
+    setIsSaving(true);
+    try {
+      if (isEditing && configInstance) {
+        await editInstance(LOCATION_ID, configInstance.instance_name, config);
+        toast.success('Configuración actualizada correctamente');
+      } else {
+        const userDetails = userData ? {
+          user_name: userData.name,
+          user_email: userData.email,
+          user_phone: userData.phone || ''
+        } : undefined;
+
+        await createInstance(LOCATION_ID, config, userDetails);
+        toast.success('WhatsApp creado correctamente');
+      }
+      await loadInstances();
+      setIsModalOpen(false);
+    } catch (error) {
+      toast.error(isEditing ? 'Error al actualizar la configuración' : 'Error al crear WhatsApp');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [isEditing, configInstance, loadInstances]);
 
   const handleViewInstance = (instance: WhatsAppInstance) => {
     setSelectedInstance(instance);
@@ -123,17 +131,6 @@ const App = () => {
     loadInstances();
   }, [loadInstances]);
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-red-600 text-center">
-          <p className="text-xl font-semibold mb-2">Error</p>
-          <p>{error}</p>
-        </div>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -145,13 +142,13 @@ const App = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <Toaster position="top-right" />
-      {isCreating && <LoadingOverlay />}
+      {isSaving && <LoadingOverlay message="Creando WhatsApp..." />}
 
       <div className="max-w-7xl mx-auto">
         {selectedInstance ? (
           <InstanceDetailPage
             instance={selectedInstance}
-            locationId={locationId || ''}
+            locationId={LOCATION_ID}
             onGoBack={handleGoBack}
             onQRCodeUpdated={() => {}}
           />
@@ -175,20 +172,28 @@ const App = () => {
                   key={instance.instance_id}
                   instance={instance}
                   onViewInstance={handleViewInstance}
-                  locationId={locationId || ''}
+                  locationId={LOCATION_ID}
                   onInstanceDeleted={handleInstanceDeleted}
                   onInstanceUpdated={handleInstanceUpdated}
+                  onEditConfig={handleEditConfig}
                 />
               ))}
             </div>
 
-            <UserModal
+            <WhatsAppConfigModal
               isOpen={isModalOpen}
               onClose={() => setIsModalOpen(false)}
+              onSave={handleSaveConfig}
               users={users}
-              onSelectUser={handleSelectUser}
               loading={loadingUsers}
-              totalInstances={totalInstances}
+              initialConfig={configInstance ? {
+                alias: configInstance.instance_alias,
+                userId: configInstance.user_id,
+                isMainDevice: configInstance.main_device,
+                facebookAds: configInstance.fb_ads
+              } : undefined}
+              existingMainDevice={hasMainDevice}
+              isEditing={isEditing}
             />
           </>
         )}

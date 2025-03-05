@@ -34,14 +34,12 @@ const InstanceDetailPage: React.FC<InstanceDetailPageProps> = ({
         onQRCodeUpdated(instance.instance_id.toString(), response.qrcode);
       }
 
-      // Verificar si el estado es "open"
       if (response?.state === 'open') {
         setIsConnected(true);
         if (pollingInterval.current) {
           clearInterval(pollingInterval.current);
         }
         
-        // Obtener datos de la instancia
         const data = await getInstanceData(locationId, instance.instance_name);
         if (data) {
           setInstanceData(data);
