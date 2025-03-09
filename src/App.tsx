@@ -9,7 +9,9 @@ import type { WhatsAppInstance, SingleInstanceResponse, User, InstanceConfig } f
 import InstanceDetailPage from './pages/InstanceDetailPage';
 
 export const App: React.FC = () => {
-  const locationId = 'lg6DldxwPUpXJpgfKhsh';
+  // Get locationId from URL parameters
+  const params = new URLSearchParams(window.location.search);
+  const locationId = params.get('locationId');
 
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -21,6 +23,7 @@ export const App: React.FC = () => {
   const [configInstance, setConfigInstance] = useState<SingleInstanceResponse['data'] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isCreatingWhatsApp, setIsCreatingWhatsApp] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const hasMainDevice = instances.some(instance => instance.main_device);
 
@@ -36,6 +39,8 @@ export const App: React.FC = () => {
   }, [instances]);
 
   const loadInstances = useCallback(async () => {
+    if (!locationId) return;
+
     try {
       const instancesList = await listInstances(locationId);
       setInstances(instancesList);
@@ -45,9 +50,11 @@ export const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [locationId]);
 
   const loadUsers = useCallback(async () => {
+    if (!locationId) return;
+
     setLoadingUsers(true);
     try {
       const usersList = await getUsers(locationId);
@@ -59,13 +66,21 @@ export const App: React.FC = () => {
     } finally {
       setLoadingUsers(false);
     }
-  }, []);
+  }, [locationId]);
 
   useEffect(() => {
+    if (!locationId) {
+      setError('No se proporcionó un ID de ubicación válido');
+      setLoading(false);
+      return;
+    }
+    setError(null);
     loadInstances();
-  }, [loadInstances]);
+  }, [locationId, loadInstances]);
 
   const handleOpenModal = useCallback(async () => {
+    if (!locationId) return;
+
     if (instances.length >= 5) {
       toast.error('Número máximo de instancias (5) alcanzado');
       return;
@@ -83,9 +98,11 @@ export const App: React.FC = () => {
     } finally {
       setLoadingUsers(false);
     }
-  }, [instances.length, loadUsers]);
+  }, [instances.length, loadUsers, locationId]);
 
   const handleEditConfig = useCallback(async (instance: WhatsAppInstance) => {
+    if (!locationId) return;
+
     setLoadingUsers(true);
     try {
       await loadUsers();
@@ -98,9 +115,11 @@ export const App: React.FC = () => {
     } finally {
       setLoadingUsers(false);
     }
-  }, [loadUsers]);
+  }, [loadUsers, locationId]);
 
   const handleSaveConfig = useCallback(async (config: InstanceConfig, userData?: User) => {
+    if (!locationId) return;
+
     if (isEditing && configInstance) {
       setIsSaving(true);
       try {
@@ -146,7 +165,7 @@ export const App: React.FC = () => {
   };
 
   const handleGoBack = async () => {
-    if (selectedInstance) {
+    if (selectedInstance && locationId) {
       try {
         await getInstanceData(locationId, selectedInstance.instance_name);
         await loadInstances();
@@ -173,6 +192,14 @@ export const App: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-red-600">{error}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <Toaster position="top-right" />
@@ -188,7 +215,7 @@ export const App: React.FC = () => {
         {selectedInstance ? (
           <InstanceDetailPage
             instance={selectedInstance}
-            locationId={locationId}
+            locationId={locationId!}
             onGoBack={handleGoBack}
             onQRCodeUpdated={() => {}}
           />
@@ -220,7 +247,7 @@ export const App: React.FC = () => {
                     key={instance.instance_id}
                     instance={instance}
                     onViewInstance={handleViewInstance}
-                    locationId={locationId}
+                    locationId={locationId!}
                     onInstanceDeleted={handleInstanceDeleted}
                     onInstanceUpdated={handleInstanceUpdated}
                     onEditConfig={handleEditConfig}
