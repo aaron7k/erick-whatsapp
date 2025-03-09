@@ -39,11 +39,16 @@ export const App: React.FC = () => {
   }, [instances]);
 
   const loadInstances = useCallback(async () => {
-    if (!locationId) return;
+    if (!locationId) {
+      setError('No se proporcionó un ID de ubicación válido');
+      setLoading(false);
+      return;
+    }
 
     try {
       const instancesList = await listInstances(locationId);
       setInstances(instancesList);
+      setError(null);
     } catch (error) {
       toast.error('Error al cargar las instancias');
       setInstances([]);
@@ -69,14 +74,8 @@ export const App: React.FC = () => {
   }, [locationId]);
 
   useEffect(() => {
-    if (!locationId) {
-      setError('No se proporcionó un ID de ubicación válido');
-      setLoading(false);
-      return;
-    }
-    setError(null);
     loadInstances();
-  }, [locationId, loadInstances]);
+  }, [loadInstances]);
 
   const handleOpenModal = useCallback(async () => {
     if (!locationId) return;
@@ -165,13 +164,13 @@ export const App: React.FC = () => {
   };
 
   const handleGoBack = async () => {
-    if (selectedInstance && locationId) {
-      try {
-        await getInstanceData(locationId, selectedInstance.instance_name);
-        await loadInstances();
-      } catch (error) {
-        console.error('Error fetching instance data:', error);
-      }
+    if (!locationId || !selectedInstance) return;
+
+    try {
+      await getInstanceData(locationId, selectedInstance.instance_name);
+      await loadInstances();
+    } catch (error) {
+      console.error('Error fetching instance data:', error);
     }
     setSelectedInstance(null);
   };
