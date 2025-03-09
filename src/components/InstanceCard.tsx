@@ -86,12 +86,25 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
   const isConnected = instance.connectionStatus?.toLowerCase() === 'connected' || 
                      instance.connectionStatus?.toLowerCase() === 'open';
 
+  const getPhoneNumber = (ownerJid?: string) => {
+    if (!ownerJid) return '';
+    return ownerJid.split('@')[0];
+  };
+
   return (
     <>
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Smartphone className="w-6 h-6 text-gray-600" />
+          <div className="flex items-center space-x-4">
+            {instance.profilePicUrl ? (
+              <img 
+                src={instance.profilePicUrl} 
+                alt="Profile" 
+                className="w-12 h-12 rounded-full"
+              />
+            ) : (
+              <Smartphone className="w-6 h-6 text-gray-600" />
+            )}
             <div>
               <h3 className="text-lg font-semibold">{instance.instance_alias}</h3>
               {instance.main_device && (
@@ -110,7 +123,9 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
         </div>
 
         <div className="space-y-1">
-          <p className="text-sm text-gray-500">ID: {instance.instance_id}</p>
+          {instance.ownerJid && (
+            <p className="text-sm text-gray-500">Número: {getPhoneNumber(instance.ownerJid)}</p>
+          )}
           <p className="text-sm text-gray-500">Nombre: {instance.instance_name}</p>
           {!instance.main_device && instance.userId && (
             <p className="text-sm text-gray-500">Usuario asignado: {instance.userId}</p>
@@ -139,7 +154,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
               className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
             >
               <MessageSquare className="w-4 h-4" />
-              <span>Ver QR</span>
+              <span>Conectar</span>
             </button>
           )}
 

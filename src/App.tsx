@@ -4,14 +4,12 @@ import { Toaster, toast } from 'react-hot-toast';
 import { InstanceCard } from './components/InstanceCard';
 import { WhatsAppConfigModal } from './components/WhatsAppConfigModal';
 import { LoadingOverlay } from './components/LoadingOverlay';
-import { createInstance, listInstances, getUsers, editInstance, getInstanceConfig } from './api';
+import { createInstance, listInstances, getUsers, editInstance, getInstanceConfig, getInstanceData } from './api';
 import type { WhatsAppInstance, SingleInstanceResponse, User, InstanceConfig } from './types';
 import InstanceDetailPage from './pages/InstanceDetailPage';
 
 export const App: React.FC = () => {
-  // Get locationId from URL parameters
-  const params = new URLSearchParams(window.location.search);
-  const locationId = params.get('locationId');
+  const locationId = 'lg6DldxwPUpXJpgfKhsh';
 
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -22,22 +20,22 @@ export const App: React.FC = () => {
   const [selectedInstance, setSelectedInstance] = useState<WhatsAppInstance | null>(null);
   const [configInstance, setConfigInstance] = useState<SingleInstanceResponse['data'] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isCreatingWhatsApp, setIsCreatingWhatsApp] = useState(false);
 
   const hasMainDevice = instances.some(instance => instance.main_device);
 
-  useEffect(() => {
-    if (!locationId) {
-      setError('No se proporcionó un ID de ubicación válido');
-      setLoading(false);
-      return;
-    }
-    setError(null);
-  }, [locationId]);
+  const getNextInstanceNumber = useCallback(() => {
+    if (instances.length === 0) return 1;
+    
+    const numbers = instances.map(instance => {
+      const match = instance.instance_name.match(/\d+$/);
+      return match ? parseInt(match[0], 10) : 0;
+    });
+    
+    return Math.max(...numbers) + 1;
+  }, [instances]);
 
   const loadInstances = useCallback(async () => {
-    if (!locationId) return;
-    
     try {
       const instancesList = await listInstances(locationId);
       setInstances(instancesList);
@@ -47,11 +45,9 @@ export const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [locationId]);
+  }, []);
 
   const loadUsers = useCallback(async () => {
-    if (!locationId) return;
-
     setLoadingUsers(true);
     try {
       const usersList = await getUsers(locationId);
@@ -63,7 +59,7 @@ export const App: React.FC = () => {
     } finally {
       setLoadingUsers(false);
     }
-  }, [locationId]);
+  }, []);
 
   useEffect(() => {
     loadInstances();
@@ -90,8 +86,6 @@ export const App: React.FC = () => {
   }, [instances.length, loadUsers]);
 
   const handleEditConfig = useCallback(async (instance: WhatsAppInstance) => {
-    if (!locationId) return;
-
     setLoadingUsers(true);
     try {
       await loadUsers();
@@ -104,42 +98,63 @@ export const App: React.FC = () => {
     } finally {
       setLoadingUsers(false);
     }
-  }, [locationId, loadUsers]);
+  }, [loadUsers]);
 
   const handleSaveConfig = useCallback(async (config: InstanceConfig, userData?: User) => {
-    if (!locationId) return;
-
-    setIsSaving(true);
-    try {
-      if (isEditing && configInstance) {
+    if (isEditing && configInstance) {
+      setIsSaving(true);
+      try {
         await editInstance(locationId, configInstance.instance_name, config);
         toast.success('Configuración actualizada correctamente');
-      } else {
+        await loadInstances();
+        setIsModalOpen(false);
+      } catch (error) {
+        toast.error('Error al actualizar la configuración');
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      setIsCreatingWhatsApp(true);
+      setIsModalOpen(false);
+      try {
+        const nextNumber = getNextInstanceNumber();
+        const instanceName = `aaron-valdes-ai-expert${nextNumber}`;
+        
         const userDetails = userData ? {
           user_name: userData.name,
           user_email: userData.email,
           user_phone: userData.phone || ''
         } : undefined;
 
-        await createInstance(locationId, config, userDetails);
+        await createInstance(locationId, {
+          ...config,
+          instance_name: instanceName
+        }, userDetails);
+        
         toast.success('WhatsApp creado correctamente');
+        await loadInstances();
+      } catch (error) {
+        toast.error('Error al crear WhatsApp');
+      } finally {
+        setIsCreatingWhatsApp(false);
       }
-      await loadInstances();
-      setIsModalOpen(false);
-    } catch (error) {
-      toast.error(isEditing ? 'Error al actualizar la configuración' : 'Error al crear WhatsApp');
-    } finally {
-      setIsSaving(false);
     }
-  }, [locationId, isEditing, configInstance, loadInstances]);
+  }, [isEditing, configInstance, locationId, loadInstances, getNextInstanceNumber]);
 
   const handleViewInstance = (instance: WhatsAppInstance) => {
     setSelectedInstance(instance);
   };
 
-  const handleGoBack = () => {
+  const handleGoBack = async () => {
+    if (selectedInstance) {
+      try {
+        await getInstanceData(locationId, selectedInstance.instance_name);
+        await loadInstances();
+      } catch (error) {
+        console.error('Error fetching instance data:', error);
+      }
+    }
     setSelectedInstance(null);
-    loadInstances();
   };
 
   const handleInstanceDeleted = useCallback(() => {
@@ -158,24 +173,22 @@ export const App: React.FC = () => {
     );
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-red-600">{error}</div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <Toaster position="top-right" />
-      {isSaving && <LoadingOverlay message="Creando WhatsApp..." />}
+      {isSaving && <LoadingOverlay message="Actualizando configuración..." />}
+      {isCreatingWhatsApp && (
+        <LoadingOverlay 
+          message="Creando WhatsApp..." 
+          description="Este proceso puede tardar unos segundos. Por favor, espere."
+        />
+      )}
 
       <div className="max-w-7xl mx-auto">
         {selectedInstance ? (
           <InstanceDetailPage
             instance={selectedInstance}
-            locationId={locationId!}
+            locationId={locationId}
             onGoBack={handleGoBack}
             onQRCodeUpdated={() => {}}
           />
@@ -193,19 +206,28 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {instances.map(instance => (
-                <InstanceCard
-                  key={instance.instance_id}
-                  instance={instance}
-                  onViewInstance={handleViewInstance}
-                  locationId={locationId!}
-                  onInstanceDeleted={handleInstanceDeleted}
-                  onInstanceUpdated={handleInstanceUpdated}
-                  onEditConfig={handleEditConfig}
-                />
-              ))}
-            </div>
+            {instances.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-lg shadow">
+                <h2 className="text-xl font-semibold text-gray-700 mb-2">No hay instancias de WhatsApp</h2>
+                <p className="text-gray-500 mb-4">
+                  Comienza creando tu primera instancia de WhatsApp haciendo clic en el botón "Crear WhatsApp"
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {instances.map(instance => (
+                  <InstanceCard
+                    key={instance.instance_id}
+                    instance={instance}
+                    onViewInstance={handleViewInstance}
+                    locationId={locationId}
+                    onInstanceDeleted={handleInstanceDeleted}
+                    onInstanceUpdated={handleInstanceUpdated}
+                    onEditConfig={handleEditConfig}
+                  />
+                ))}
+              </div>
+            )}
 
             <WhatsAppConfigModal
               isOpen={isModalOpen}

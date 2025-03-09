@@ -31,6 +31,8 @@ export interface WhatsAppInstance {
   connectionStatus?: string;
   qrcode?: string;
   userId?: string;
+  ownerJid?: string;
+  profilePicUrl?: string;
 }
 
 export interface InstanceConfig {
@@ -38,6 +40,7 @@ export interface InstanceConfig {
   userId?: string;
   isMainDevice: boolean;
   facebookAds: boolean;
+  instance_name?: string;
   user_name?: string;
   user_email?: string;
   user_phone?: string;
@@ -80,4 +83,6 @@ export interface InstanceData {
   name: string;
   number: string;
   photo: string;
+  ownerJid?: string;
+  profilePicUrl?: string;
 }
